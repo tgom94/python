@@ -1,0 +1,65 @@
+import gspread
+import requests
+import time
+import xlrd
+import pandas as pd
+import datetime as dt
+
+from apscheduler.schedulers.blocking import BlockingScheduler
+from oauth2client.service_account import ServiceAccountCredentials
+from datetime import datetime
+from datetime import timedelta
+
+scope = ["https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/spreadsheets"]
+credentials = ServiceAccountCredentials.from_json_keyfile_name('Teste-2403a88196e3.json', scope)
+gc = gspread.authorize(credentials)
+
+spreadsheet_key = ''
+book = gc.open_by_key(spreadsheet_key)
+control_worksheet = book.worksheet("Mãe")
+control_table = control_worksheet.get_all_values()
+
+rows = len(control_table)
+columns = len(control_table[0])
+
+print(rows)
+print(columns)
+
+def read_and_plot():
+    
+    for i in range (2, rows+1):
+
+        tabname = control_worksheet.cell(i, 1).value
+        counttab = control_worksheet.cell(i, 2).value
+        REST_API_URL = control_worksheet.cell(i, 3).value
+        aux = control_worksheet.cell(i, 4).value
+
+        print(tabname)
+        print("Número de registros atuais:", counttab)
+        print("Número de registros na última execução:", aux)
+
+        counttab = int(counttab)
+        aux = int(aux)
+
+        if counttab > aux:
+            
+            print("Existem novos registros na aba:", tabname)
+            
+            worksheet = book.worksheet(tabname)
+            table = worksheet.get_all_values()
+            diff = counttab - aux
+            HEADER = table[0]
+            data_df = pd.DataFrame(table[1:diff+1], columns=HEADER)
+            data_json = bytes(data_df.to_json(orient='records'), encoding='utf-8')
+            req = requests.post(REST_API_URL, data_json)
+            
+            print(req)
+
+            control_worksheet.update_cell(i, 4, counttab)
+            
+scheduler = BlockingScheduler()
+scheduler.add_job(read_and_plot, 'interval', seconds=25)
+try:
+    scheduler.start()
+except (KeyboardInterrupt, SystemExit):
+    pass
